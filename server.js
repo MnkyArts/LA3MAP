@@ -16,9 +16,6 @@ const dbFile = 'app.db';
 // Middleware to parse JSON data
 app.use(bodyParser.json());
 
-// Serve static files from the "public" directory
-app.use(express.static('public'));
-
 app.use(
   session({
     secret: 'your-very-secret-key',
@@ -32,6 +29,31 @@ app.use(
 
 // Route for index.html
 app.get('/', (req, res) => {
+  // Generate a new UUID for the drawing session
+  const sessionId = uuidv4();
+
+  // save to DB with worldname
+  var worldname = "chernarus";
+  console.log(sessionId)
+  DB.run(
+    'INSERT INTO sessions (id, worldname) VALUES (?, ?)',
+    [sessionId, worldname],
+    (err) => {
+      if (err) {
+        console.error('Error creating new drawing session:', err);
+        res.status(500).json({
+          success: false,
+          message: 'Error creating new drawing session',
+        });
+      } else {
+        console.log('Drawing session created successfully.');
+        res.redirect(`/draw?session=${sessionId}`);
+      }
+    });
+});
+
+// dynamic routes for drawing sessions using the session ID search param
+app.get('/draw', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
@@ -45,10 +67,8 @@ app.get('/logout', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'logout.html'));
 });
 
-const validCredentials = {
-  username: 'admin',
-  password: 'password',
-};
+
+
 
 // Login route
 app.post('/login', (req, res) => {
@@ -94,13 +114,13 @@ app.post('/logout', (req, res) => {
 });
 
 // GET route to retrieve all drawings
-app.get('/drawings', (req, res) => {
-  DB.all('SELECT * FROM drawings', (err, rows) => {
+app.get('/drawings/:session', (req, res) => {
+  DB.all('SELECT * FROM drawings WHERE session_id = ?', [req.params.session], (err, rows) => {
     if (err) {
       console.error('Error loading drawings:', err);
       res.status(500).send('Error loading drawings');
     } else {
-      console.log(rows);
+      // console.log(rows);
       const drawings = rows.map((row) => {
         row.data = JSON.parse(row.data);
         return row;
@@ -111,11 +131,12 @@ app.get('/drawings', (req, res) => {
 });
 
 // POST route to save a new drawing
-app.post('/drawings', (req, res) => {
+app.post('/drawings/:session', (req, res) => {
   if (req.session.isLoggedIn) {
     const drawings = [];
     const newDrawing = {
       id: uuidv4(), // Add a unique ID to the drawing
+      session_id: req.params.session,
       data: JSON.stringify(req.body.data),
       description: req.body.description,
       color: req.body.color, // Add the color property
@@ -126,8 +147,9 @@ app.post('/drawings', (req, res) => {
     // save to database
     for (let drawing of drawings) {
       DB.all(
-        'INSERT INTO drawings (id, data, description, color, imageUrl) VALUES (?, ?, ?, ?, ?)',
-        [drawing.id, drawing.data, drawing.description, drawing.color, drawing.imageUrl], (err) => {
+        'INSERT INTO drawings (id, session_id, data, description, color, imageUrl) VALUES (?, ?, ?, ?, ?, ?)',
+        [drawing.id, drawing.session_id, drawing.data, drawing.description, drawing.color, drawing.imageUrl],
+        (err) => {
           if (err) {
             console.error('Error saving drawing:', err);
             res.status(500).send('Error saving drawing');
@@ -193,46 +215,45 @@ app.get('/loginStatus', (req, res) => {
   });
 });
 
+// Serve static files from the "public" directory
+app.use(express.static('public'));
+
 
 // connect sqlite
 function connectDB () {
   const db = new sqlite3.Database(dbFile);
+  // enable foreign keys
+  db.exec('PRAGMA foreign_keys = ON;', (err) => {
+    if (err) {
+      console.error('Pragma statement failed:', err);
+    } else {
+      console.log('SQLite Foreign Key Enforcement is on.');
+    }
+  });
   return db;
 }
 
 // create tables if they don't exist
 function createDB () {
-  // users
-  const cmdStr = 'CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, password TEXT NOT NULL)';
-  DB.run(cmdStr, function (err) {
-    if (err) {
-      console.error("Table creation error", err);
-    } else {
-      console.log("Created users table");
-    }
-  });
+  var sql = [
+    // 'PRAGMA foreign_keys = ON;', // Enable foreign key constraints
+    'CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, password TEXT NOT NULL);',
+    'CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, worldname TEXT NOT NULL);',
+    'CREATE TABLE IF NOT EXISTS drawings (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, data TEXT NOT NULL, description TEXT, color TEXT, imageUrl TEXT, FOREIGN KEY (session_id) REFERENCES sessions (id));',
+    'CREATE INDEX IF NOT EXISTS idx_drawings_session_id ON drawings (session_id);',
+    'INSERT OR IGNORE INTO users (username, password) VALUES ("admin", "password");'
+  ];
 
-  createAdminUser = () => {
-    // create admin user
-    const cmdStr1 = 'INSERT OR IGNORE INTO users (username, password) VALUES ("admin", "password")';
-    DB.run(cmdStr1, function (err) {
+  let timer = 0;
+  sql.forEach((query) => {
+    // setTimeout(() => {
+    //   timer += 1000;
+    DB.exec(query, (err) => {
       if (err) {
-        console.error("Table creation error", err);
-      } else {
-        console.log("Created admin user");
+        console.error('Error creating tables:', err);
       }
     });
-  };
-  // wait one second for the table to be created before inserting admin user
-  setTimeout(createAdminUser, 1000);
-  // drawings
-  const cmdStr2 = 'CREATE TABLE IF NOT EXISTS drawings (id TEXT PRIMARY KEY, data TEXT NOT NULL, description TEXT, color TEXT, imageUrl TEXT)';
-  DB.run(cmdStr2, function (err) {
-    if (err) {
-      console.log("Table creation error", err);
-    } else {
-      console.log("Created drawings table");
-    }
+    // }, timer);
   });
 }
 
