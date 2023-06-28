@@ -29,14 +29,9 @@ function InitMap (mapInfos) {
     }
 
     // Function to update draw colors based on the selected color
+    window.DRAW_COLOR = '#3388ff';
     function updateDrawColors (color) {
-      map.eachLayer(function (layer) {
-        if (layer.pm && (layer instanceof L.Polyline || layer instanceof L.Polygon)) {
-          layer.setStyle({
-            color: color
-          });
-        }
-      });
+      DRAW_COLOR = color;
     }
 
     // Update the 'pm:create' event listener
@@ -64,7 +59,19 @@ function InitMap (mapInfos) {
 
       if (description) {
         layer.description = description;
-        layer.bindPopup(description).openPopup();
+        var popup = L.popup({
+          maxWidth: 200,
+          className: 'drawingPopup',
+        });
+        popup.setContent(description + '<br>Image: ' + imageUrl);
+        layer.bindPopup(popup);
+
+        // create tooltip
+        layer.bindTooltip(description, {
+          permanent: true,
+          direction: 'bottom',
+          className: 'drawingTooltip',
+        });
       }
 
       if (event.shape !== 'Marker') {
@@ -172,7 +179,20 @@ function InitMap (mapInfos) {
             }
 
             layer.eachLayer(function (l) {
-              l.bindPopup(drawing.description);
+              var popup = L.popup({
+                maxWidth: 200,
+                className: 'drawingPopup',
+              });
+              popup.setContent(drawing.description);
+              l.bindPopup(popup);
+
+              // create tooltip
+              l.bindTooltip(drawing.description, {
+                permanent: true,
+                direction: 'bottom',
+                className: 'drawingTooltip',
+              });
+
               l.drawingId = drawing.id; // Set the drawing ID as a property of the layer
             });
 
