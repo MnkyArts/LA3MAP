@@ -239,7 +239,7 @@ function createDB () {
     // 'PRAGMA foreign_keys = ON;', // Enable foreign key constraints
     'CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, password TEXT NOT NULL);',
     'CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, worldname TEXT NOT NULL);',
-    'CREATE TABLE IF NOT EXISTS drawings (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, data TEXT NOT NULL, description TEXT, color TEXT, imageUrl TEXT, FOREIGN KEY (session_id) REFERENCES sessions (id));',
+    'CREATE TABLE IF NOT EXISTS drawings (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, data TEXT NOT NULL, description TEXT, color TEXT, imageUrl TEXT, FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE);',
     'CREATE INDEX IF NOT EXISTS idx_drawings_session_id ON drawings (session_id);',
     'INSERT OR IGNORE INTO users (username, password) VALUES ("admin", "password");'
   ];

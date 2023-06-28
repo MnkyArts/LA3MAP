@@ -20,6 +20,56 @@ function InitMap (mapInfos) {
       imperial: false
     }).addTo(map);
 
+    // add control in top right with recent sessions
+    const recentSessionsControl = L.control({
+      position: 'topright',
+    })
+    recentSessionsControl.onAdd = (map) => {
+      var recentSessions = localStorage.getItem('recentSessions') || '[]';
+      // If session search param set, store in cache
+      const queryString = window.location.search;
+      const urlParams = new URLSearchParams(queryString);
+      const session = urlParams.get('session');
+      if (session) {
+        recentSessions = JSON.parse(recentSessions);
+        if (!recentSessions.includes(session)) {
+          // if not already listed, insert at beginning of array
+          recentSessions.unshift(session);
+          localStorage.setItem('recentSessions', JSON.stringify(recentSessions));
+        } else {
+          // move to top if already in array
+          recentSessions = recentSessions.filter((s) => s !== session);
+          recentSessions.unshift(session);
+          localStorage.setItem('recentSessions', JSON.stringify(recentSessions));
+
+        }
+      }
+
+      // Use recent missions to populate info window
+      var recentSessionsHtml = '<div id="recentSessions" style="background-color: white; padding: 10px;"><h3>Recent Sessions</h3><ul>';
+      for (let session of recentSessions || []) {
+        if (session === recentSessions[0]) {
+          // if first, add a "current" label
+          recentSessionsHtml += '<li>Current: <a href="/draw?session=' + session + '">' + session + '</a></li>';
+        } else {
+          // otherwise, add normally
+          recentSessionsHtml += '<li><a href="/draw?session=' + session + '">' + session + '</a></li>';
+        }
+        // skip any past 7
+        if (session === recentSessions[6]) {
+          break;
+        }
+      }
+      recentSessionsHtml += '</ul></div>';
+
+      var div = L.DomUtil.create('div', 'recentSessions');
+      div.innerHTML = recentSessionsHtml;
+      return div;
+    }
+
+    recentSessionsControl.addTo(map);
+
+
     L.control.gridMousePosition().addTo(map);
 
     if (window.location.hash == '#cities') {
