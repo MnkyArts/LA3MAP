@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Login</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <meta http-equiv="refresh" content="1;url=/">
+</head>
+<body class="bg-gray-100">
+  <h1 class="text-3xl text-center font-bold mt-8">Ausgeloggt</h1>
+  <p class="text-1xl text-center font-bold mt-8">Du hast dich erfolgreich ausgelogt.</p>
+
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script>
+    $(document).ready(function () {
+      $.ajax({
+          url: '/logout',
+          type: 'POST',
+        });
+    });
+  </script>
+</body>
+</html>
