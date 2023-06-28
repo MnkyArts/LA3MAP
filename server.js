@@ -203,7 +203,7 @@ function connectDB () {
 // create tables if they don't exist
 function createDB () {
   // users
-  const cmdStr = 'CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, username TEXT UNIQUE, password TEXT)';
+  const cmdStr = 'CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, password TEXT NOT NULL)';
   DB.run(cmdStr, function (err) {
     if (err) {
       console.error("Table creation error", err);
@@ -226,7 +226,7 @@ function createDB () {
   // wait one second for the table to be created before inserting admin user
   setTimeout(createAdminUser, 1000);
   // drawings
-  const cmdStr2 = 'CREATE TABLE IF NOT EXISTS drawings (id TEXT PRIMARY KEY, data TEXT, description TEXT, color TEXT, imageUrl TEXT)';
+  const cmdStr2 = 'CREATE TABLE IF NOT EXISTS drawings (id TEXT PRIMARY KEY, data TEXT NOT NULL, description TEXT, color TEXT, imageUrl TEXT)';
   DB.run(cmdStr2, function (err) {
     if (err) {
       console.log("Table creation error", err);
