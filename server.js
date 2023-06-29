@@ -36,7 +36,7 @@ app.get('/', (req, res) => {
     'INSERT INTO sessions (id, worldname) VALUES (?, ?)',
     [sessionId, worldname],
     (err) => {
-        console.error('Error creating new drawing session:', err);
+      console.error('Error creating new drawing session:', err);
       if (err) {
         res.status(500).json({
           message: 'Error creating new drawing session',
@@ -63,8 +63,6 @@ app.get('/login', (req, res) => {
 app.get('/logout', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'logout.html'));
 });
-
-
 
 
 // Login route
@@ -118,6 +116,9 @@ app.get('/drawings', (req, res) => {
       res.json(drawings);
     }
   });
+});
+
+// GET route to retrieve all drawings for a session
 app.get('/drawings/:session', (req, res) => {
   DB.all('SELECT * FROM drawings WHERE session_id = ?', [req.params.session], (err, rows) => {
     if (err) {
@@ -226,23 +227,33 @@ app.get('/export', (req, res) => {
 
 // Import drawings.json
 app.post('/import', (req, res) => {
-    if (req.session.isLoggedIn) {
-      const fileData = req.body;
-  
-      fs.writeFile('drawings.json', JSON.stringify(fileData), 'utf8', (err) => {
-        if (err) {
-          console.error('Error importing drawings:', err);
-          res.status(500).send('Error importing drawings');
-        } else {
-          res.sendStatus(200);
-        }
-      });
-    } else {
-      res.status(401).json({ success: false, message: 'Unauthorized' });
-    }
-});
-  
+  if (req.session.isLoggedIn) {
+    const fileData = req.body;
 
+    fs.writeFile('drawings.json', JSON.stringify(fileData), 'utf8', (err) => {
+      if (err) {
+        console.error('Error importing drawings:', err);
+        res.status(500).send('Error importing drawings');
+      } else {
+        res.sendStatus(200);
+      }
+    });
+  } else {
+    res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+});
+
+
+// Route to check if the user is logged in
+app.get('/loginStatus', (req, res) => {
+  const isLoggedIn = req.session.isLoggedIn;
+  res.json({
+    isLoggedIn
+  });
+});
+
+// Serve static files from the "public" directory
+app.use(express.static('public'));
 
 
 // connect sqlite
@@ -251,9 +262,9 @@ function connectDB () {
   // enable foreign keys
   db.exec('PRAGMA foreign_keys = ON;', (err) => {
     if (err) {
-        console.error('Pragma statement failed:', err);
+      console.error('Pragma statement failed:', err);
     } else {
-        console.log('SQLite Foreign Key Enforcement is on.');
+      console.log('SQLite Foreign Key Enforcement is on.');
     }
   });
 
@@ -270,7 +281,7 @@ function createDB () {
     'CREATE INDEX IF NOT EXISTS idx_drawings_session_id ON drawings (session_id);',
     'INSERT OR IGNORE INTO users (username, password) VALUES ("admin", "password");'
   ];
-  
+
   sql.forEach((query) => {
     // setTimeout(() => {
     //   timer += 1000;
@@ -279,8 +290,8 @@ function createDB () {
         console.error('Error creating tables:', err);
       }
     });
-  }
-});
+  });
+};
 
 const DB = connectDB();
 createDB();
