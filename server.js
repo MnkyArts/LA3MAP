@@ -178,6 +178,19 @@ app.get('/loginStatus', (req, res) => {
     });
 });
 
+// create drawings.json if it doesn't exist
+fs.access('drawings.json', fs.F_OK, (err) => {
+    if (err) {
+        fs.writeFile('drawings.json', '[]', 'utf8', (err) => {
+            if (err) {
+                console.error('Error creating drawings.json:', err);
+            } else {
+                console.log('drawings.json created');
+            }
+        });
+    }
+});
+
 // Start the server
 app.listen(port, () => {
     console.log(`Server is running on http://localhost:${port}`);
