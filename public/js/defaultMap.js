@@ -59,38 +59,73 @@ function InitMap (mapInfos) {
         map.on('pm:create', function (event) {
             console.log(event.shape);
             var layer = event.layer;
-            var imageUrl = null;
+            var imageUrl;
+            var description;
 
             if (event.shape === 'Marker') {
-                var imageUrl = prompt('Enter the URL of the marker image:');
-                if (!imageUrl) {
-                    imageUrl = 'https://i.imgur.com/SY0C1lx.png';
-                }
-                var icon = L.icon({
-                    iconUrl: imageUrl,
-                    iconSize: [25, 41], // Adjust the size of the icon if needed
+                Swal.fire({
+                  title: 'Set Marker Image and Description',
+                  html: `
+                    <p>Marker URL</p>
+                    <input id="image-url" class="swal2-input" placeholder="Enter the URL of the marker image">
+                    <p>Description</p>
+                    <textarea id="description" rows="4" class="swal2-textarea" placeholder="Enter a description for the drawing"></textarea>
+                  `,
+                  showCancelButton: true,
+                  confirmButtonText: 'Set',
+                  cancelButtonText: 'Cancel',
+                  allowOutsideClick: false,
+                  preConfirm: () => {
+                    imageUrl = document.getElementById('image-url').value;
+                    description = document.getElementById('description').value;
+                    if (!imageUrl) {
+                      imageUrl = 'https://i.imgur.com/SY0C1lx.png';
+                    }
+                    var icon = L.icon({
+                      iconUrl: imageUrl,
+                      iconSize: [25, 41] // Adjust the size of the icon if needed
+                    });
+                    layer.setIcon(icon);
+
+                    if (description.trim() !== '') {
+                        layer.description = description;
+                        layer.bindPopup(description).openPopup();
+                    }
+                  }
+                }).then((result) => {
+                    // Get the selected color from the color picker
+                    var selectedColor = $('#colorPicker').spectrum('get').toHexString();
+                    
+                    // Send the drawing data to the server
+                    saveDrawingToServer(layer, description, selectedColor, imageUrl);
                 });
-                layer.setIcon(icon);
+            } else {                     
+
+                Swal.fire({
+                    title: 'Enter a description for the drawing:',
+                    input: 'textarea',
+                    inputPlaceholder: 'Description',
+                    showCancelButton: true,
+                    confirmButtonText: 'Save',
+                    cancelButtonText: 'Cancel',
+                    allowOutsideClick: false
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                    description = result.value;
+                    layer.description = description;
+                    layer.bindPopup(description).openPopup();
+                    } else if (result.dismiss === Swal.DismissReason.cancel) {
+                    // Cancelled, do nothing
+                    }
+                }).then((result) => {
+                    // Get the selected color from the color picker
+                    var selectedColor = $('#colorPicker').spectrum('get').toHexString();
+                    layer.setStyle({color: selectedColor}); // Set the color of the layer
+
+                    // Send the drawing data to the server
+                    saveDrawingToServer(layer, description, selectedColor, imageUrl);
+                });
             }
-
-            var description = prompt('Enter a description for the drawing:');
-
-            // Get the selected color from the color picker
-            var selectedColor = $('#colorPicker').spectrum('get').toHexString();
-
-            if (description) {
-                layer.description = description;
-                layer.bindPopup(description).openPopup();
-            }
-
-            if (event.shape !== 'Marker') {
-                layer.setStyle({
-                    color: selectedColor
-                }); // Set the color of the layer
-            }
-
-            // Send the drawing data to the server
-            saveDrawingToServer(layer, description, selectedColor, imageUrl);
         });
 
         // Function to send the drawing data to the server
@@ -179,7 +214,9 @@ function InitMap (mapInfos) {
                         }
 
                         layer.eachLayer(function (l) {
-                            l.bindPopup(drawing.description);
+                            if (typeof drawing.description !== 'undefined' && drawing.description) {
+                                l.bindPopup(drawing.description);
+                              }
                             l.drawingId = drawing.id; // Set the drawing ID as a property of the layer
                         });
 
