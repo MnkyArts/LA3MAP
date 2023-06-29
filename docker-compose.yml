@@ -1,13 +1,13 @@
 version: "2"
 services:
   node:
-    image: "node:8"
-    user: "node"
-    working_dir: /home/node/app
+    build: ./
+    working_dir: /usr/app
     environment:
       - NODE_ENV=production
     volumes:
-      - ./:/home/node/app # Change this accordingly, if you clone this repo then this is okay.
+      - ./:/usr/app
+      - /usr/app/node_modules
     ports:
       - 8092:3000
     command: "npm start"
