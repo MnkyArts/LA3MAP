@@ -2,9 +2,7 @@ const express = require('express');
 const session = require('express-session');
 const path = require('path');
 const bodyParser = require('body-parser');
-const {
-  v4: uuidv4
-} = require('uuid');
+const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 
 const app = express();
@@ -22,7 +20,7 @@ app.use(
     resave: false,
     saveUninitialized: true,
     cookie: {
-      secure: false
+      secure: false,
     }, // Adjust the cookie settings as per your requirements
   })
 );
@@ -31,19 +29,18 @@ app.use(
 app.get('/', (req, res) => {
   // Generate a new UUID for the drawing session
   const sessionId = uuidv4();
-
   // save to DB with worldname
+
   var worldname = "chernarus";
-  console.log(sessionId)
   DB.run(
     'INSERT INTO sessions (id, worldname) VALUES (?, ?)',
     [sessionId, worldname],
     (err) => {
-      if (err) {
         console.error('Error creating new drawing session:', err);
+      if (err) {
         res.status(500).json({
-          success: false,
           message: 'Error creating new drawing session',
+          success: false,
         });
       } else {
         console.log('Drawing session created successfully.');
@@ -72,10 +69,7 @@ app.get('/logout', (req, res) => {
 
 // Login route
 app.post('/login', (req, res) => {
-  const {
-    username,
-    password
-  } = req.body;
+  const { username, password } = req.body;
 
   // Query DB for users with provided credentials
   DB.all(
@@ -114,6 +108,16 @@ app.post('/logout', (req, res) => {
 });
 
 // GET route to retrieve all drawings
+app.get('/drawings', (req, res) => {
+  fs.readFile('drawings.json', 'utf8', (err, data) => {
+    if (err) {
+      console.error('Error loading drawings:', err);
+      res.status(500).send('Error loading drawings');
+    } else {
+      const drawings = JSON.parse(data);
+      res.json(drawings);
+    }
+  });
 app.get('/drawings/:session', (req, res) => {
   DB.all('SELECT * FROM drawings WHERE session_id = ?', [req.params.session], (err, rows) => {
     if (err) {
@@ -169,7 +173,6 @@ app.post('/drawings/:session', (req, res) => {
   }
 });
 
-
 // DELETE route to delete a drawing
 app.delete('/drawings/:id', (req, res) => {
   if (req.session.isLoggedIn) {
@@ -208,15 +211,38 @@ app.delete('/drawings/:id', (req, res) => {
 });
 
 
-app.get('/loginStatus', (req, res) => {
-  const isLoggedIn = req.session.isLoggedIn;
-  res.json({
-    isLoggedIn
+// Export drawings.json
+app.get('/export', (req, res) => {
+  fs.readFile('drawings.json', 'utf8', (err, data) => {
+    if (err) {
+      console.error('Error loading drawings:', err);
+      res.status(500).send('Error loading drawings');
+    } else {
+      res.attachment('drawings.json');
+      res.send(data);
+    }
   });
 });
 
-// Serve static files from the "public" directory
-app.use(express.static('public'));
+// Import drawings.json
+app.post('/import', (req, res) => {
+    if (req.session.isLoggedIn) {
+      const fileData = req.body;
+  
+      fs.writeFile('drawings.json', JSON.stringify(fileData), 'utf8', (err) => {
+        if (err) {
+          console.error('Error importing drawings:', err);
+          res.status(500).send('Error importing drawings');
+        } else {
+          res.sendStatus(200);
+        }
+      });
+    } else {
+      res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+});
+  
+
 
 
 // connect sqlite
@@ -225,11 +251,12 @@ function connectDB () {
   // enable foreign keys
   db.exec('PRAGMA foreign_keys = ON;', (err) => {
     if (err) {
-      console.error('Pragma statement failed:', err);
+        console.error('Pragma statement failed:', err);
     } else {
-      console.log('SQLite Foreign Key Enforcement is on.');
+        console.log('SQLite Foreign Key Enforcement is on.');
     }
   });
+
   return db;
 }
 
@@ -243,8 +270,7 @@ function createDB () {
     'CREATE INDEX IF NOT EXISTS idx_drawings_session_id ON drawings (session_id);',
     'INSERT OR IGNORE INTO users (username, password) VALUES ("admin", "password");'
   ];
-
-  let timer = 0;
+  
   sql.forEach((query) => {
     // setTimeout(() => {
     //   timer += 1000;
@@ -253,9 +279,8 @@ function createDB () {
         console.error('Error creating tables:', err);
       }
     });
-    // }, timer);
-  });
-}
+  }
+});
 
 const DB = connectDB();
 createDB();

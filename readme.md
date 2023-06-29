@@ -1,7 +1,13 @@
-![Logo](https://i.imgur.com/DdACVNB.png)
-# LiveArma3Map 
+<p align="center">
+<img width="20%" src="https://i.imgur.com/vfvQlbW.png">
+</p>
+<h2 align="center">
+	LiveArma3Map     
+</h2>
 
-A very simplified liveuamap.com clone but for Arma Operations
+<p align="center">
+    <sup>A very simplified liveuamap.com clone but for Arma Operations</sup>
+</p>
 
 
 ## Features
