@@ -182,6 +182,50 @@ function InitMap (mapInfos) {
             }
         }
 
+        // Function to export the drawings
+        function exportDrawings() {
+            window.location.href = '/export';
+        }
+
+        // Function to import the drawings
+        function importDrawings() {
+            var input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+
+            input.onchange = function (event) {
+                var file = event.target.files[0];
+                if (file) {
+                var reader = new FileReader();
+                reader.onload = function (e) {
+                    var fileData = e.target.result;
+                    importDrawingsFromFile(fileData);
+                };
+                reader.readAsText(file);
+                }
+            };
+
+            input.click();
+        }
+
+        // Function to import the drawings from a file
+        function importDrawingsFromFile(fileData) {
+            $.ajax({
+                url: '/import',
+                type: 'POST',
+                contentType: 'application/json',
+                data: fileData,
+                success: function () {
+                console.log('Drawings imported successfully.');
+                // Reload the page to display the imported drawings
+                location.reload();
+                },
+                error: function (xhr, status, error) {
+                console.error('Error importing drawings:', error);
+                },
+            });
+        }
+
         // Load drawings from the server
         loadDrawingsFromServer();
 
@@ -252,6 +296,14 @@ function InitMap (mapInfos) {
                         // Add color picker functionality
                         var colorPicker = $('<input type="text" id="colorPicker" />');
                         var logout = $('<div class="button-container" title="Logout"><a class="leaflet-buttons-control-button" role="button" tabindex="0" href="/logout"><div class="control-icon leaflet-pm-icon-logout"></div></a></div>');
+
+                        // Create the import button
+                        var importButton = $('<div class="button-container" title="Import Drawings"><a class="leaflet-buttons-control-button" role="button" tabindex="0" id="importButton"><div class="control-icon leaflet-pm-icon-import"></div></a></div>');
+                        $('.leaflet-pm-toolbar:last').append(importButton);
+                        
+                        // Create the export button
+                        var exportButton = $('<div class="button-container" title="Export Drawings"><a class="leaflet-buttons-control-button" role="button" tabindex="0" id="exportButton"><div class="control-icon leaflet-pm-icon-export"></div></a></div>');
+                        $('.leaflet-pm-toolbar:last').append(exportButton);
                         $('.leaflet-pm-toolbar:last').append(logout);
                         $('.leaflet-pm-toolbar:first').prepend(colorPicker);
                         $('#colorPicker').spectrum({
@@ -262,6 +314,16 @@ function InitMap (mapInfos) {
                                 var selectedColor = color.toHexString();
                                 updateDrawColors(selectedColor);
                             },
+                        });
+
+                        // Event listener for export button click
+                        $('#exportButton').on('click', function () {
+                            exportDrawings();
+                        });
+
+                        // Event listener for import button click
+                        $('#importButton').on('click', function () {
+                            importDrawings();
                         });
                     }
                 },
