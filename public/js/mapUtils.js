@@ -1,4 +1,8 @@
-﻿/**
+﻿// leaflet.latlng-graticule.js
+// https://github.com/cloudybay/leaflet.latlng-graticule
+
+/* eslint-disable indent,semi */
+/**
  *  Create a Canvas as ImageOverlay to draw the Lat/Lon Graticule,
  *  and show the axis tick label on the edge of the map.
  *  Author: lanwei@cloudybay.com.tw
@@ -7,16 +11,24 @@
 (function (window, document, undefined) {
 
   L.LatLngGraticule = L.Layer.extend({
-    includes: L.Evented.prototype,
-
+    includes: (L.Evented.prototype || L.Mixin.Events),
     options: {
+      showLabel: true,
       opacity: 1,
       weight: 0.8,
-      color: '#444',
+      color: '#aaa',
       font: '12px Verdana',
+      dashArray: [0, 0],
+      lngLineCurved: 0,
+      latLineCurved: 0,
       zoomInterval: [
-        { start: 0, end: 5, interval: 1000 }
-      ]
+        { start: 2, end: 2, interval: 40 },
+        { start: 3, end: 3, interval: 20 },
+        { start: 4, end: 4, interval: 10 },
+        { start: 5, end: 7, interval: 5 },
+        { start: 8, end: 20, interval: 1 }
+      ],
+      sides: ['N', 'S', 'E', 'W']
     },
 
     initialize: function (options) {
@@ -57,25 +69,33 @@
     onAdd: function (map) {
       this._map = map;
 
-      if (!this._container) {
+      if (!this._canvas) {
         this._initCanvas();
       }
 
-      map._panes.overlayPane.appendChild(this._container);
+      map._panes.overlayPane.appendChild(this._canvas);
 
       map.on('viewreset', this._reset, this);
       map.on('move', this._reset, this);
       map.on('moveend', this._reset, this);
 
+      // if (map.options.zoomAnimation && L.Browser.any3d) {
+      //   map.on('zoomanim', this._animateZoom, this);
+      // }
+
       this._reset();
     },
 
     onRemove: function (map) {
-      map.getPanes().overlayPane.removeChild(this._container);
+      L.DomUtil.remove(this._canvas);
 
       map.off('viewreset', this._reset, this);
       map.off('move', this._reset, this);
       map.off('moveend', this._reset, this);
+
+      if (map.options.zoomAnimation) {
+        map.off('zoomanim', this._animateZoom, this);
+      }
     },
 
     addTo: function (map) {
@@ -91,7 +111,7 @@
 
     bringToFront: function () {
       if (this._canvas) {
-        this._map._panes.overlayPane.appendChild(this._canvas);
+        //this._map._panes.overlayPane.appendChild(this._canvas);
       }
       return this;
     },
@@ -99,7 +119,7 @@
     bringToBack: function () {
       var pane = this._map._panes.overlayPane;
       if (this._canvas) {
-        pane.insertBefore(this._canvas, pane.firstChild);
+        //pane.insertBefore(this._canvas, pane.firstChild);
       }
       return this;
     },
@@ -109,7 +129,6 @@
     },
 
     _initCanvas: function () {
-      this._container = L.DomUtil.create('div', 'leaflet-image-layer');
 
       this._canvas = L.DomUtil.create('canvas', '');
 
@@ -121,7 +140,6 @@
 
       this._updateOpacity();
 
-      this._container.appendChild(this._canvas);
 
       L.extend(this._canvas, {
         onselectstart: L.Util.falseFn,
@@ -130,16 +148,25 @@
       });
     },
 
-    _reset: function () {
-      var container = this._container,
+    _animateZoom: function (e) {
+      var map = this._map,
         canvas = this._canvas,
+        scale = map.getZoomScale(e.zoom),
+        nw = map.containerPointToLatLng([0, 0]),
+        se = map.containerPointToLatLng([canvas.width, canvas.height]),
+        topLeft = map._latLngToNewLayerPoint(nw, e.zoom, e.center),
+        size = map._latLngToNewLayerPoint(se, e.zoom, e.center)._subtract(topLeft),
+        origin = topLeft._add(size._multiplyBy((1 / 2) * (1 - 1 / scale)));
+
+      L.DomUtil.setTransform(canvas, origin, scale);
+    },
+
+    _reset: function () {
+      var canvas = this._canvas,
         size = this._map.getSize(),
         lt = this._map.containerPointToLayerPoint([0, 0]);
 
-      L.DomUtil.setPosition(container, lt);
-
-      container.style.width = size.x + 'px';
-      container.style.height = size.y + 'px';
+      L.DomUtil.setPosition(canvas, lt);
 
       canvas.width = size.x;
       canvas.height = size.y;
@@ -159,14 +186,31 @@
       L.DomUtil.setOpacity(this._canvas, this.options.opacity);
     },
 
-    __format_lat: function (lat) {
-      var str = "00" + (lat / 1000).toFixed();
-      return str.substring(str.length - 2);
-    },
+    __format_coord: function (value, labelMeters, interval) {
 
-    __format_lng: function (lng) {
-      var str = "00" + (lng / 1000).toFixed();
-      return str.substring(str.length - 2);
+      // console.debug('__format_coord', {
+      //   value,
+      //   labelMeters,
+      //   interval
+      // })
+
+      var padLength = 3;
+      switch (interval) {
+        case 10000:
+          padLength = 1;
+          labelMeters = labelMeters / 10000;
+          break;
+        case 1000:
+          padLength = 2;
+          labelMeters = labelMeters / 1000;
+          break;
+        case 100:
+          padLength = 3;
+          labelMeters = labelMeters / 100;
+          break;
+      }
+
+      return `${labelMeters}`.padStart(padLength, '0')
     },
 
     __calcInterval: function () {
@@ -230,7 +274,9 @@
 
       var self = this,
         canvas = this._canvas,
-        map = this._map
+        map = this._map,
+        curvedLon = this.options.lngLineCurved,
+        curvedLat = this.options.latLineCurved;
 
       if (L.Browser.canvas && map) {
         if (!this._currLngInterval || !this._currLatInterval) {
@@ -245,6 +291,7 @@
         ctx.lineWidth = this.options.weight;
         ctx.strokeStyle = this.options.color;
         ctx.fillStyle = this.options.fontColor;
+        ctx.setLineDash(this.options.dashArray);
 
         if (this.options.font) {
           ctx.font = this.options.font;
@@ -252,7 +299,7 @@
         var txtWidth = ctx.measureText('0').width;
         var txtHeight = 12;
         try {
-          var _font_size = ctx.font.split(' ')[0];
+          var _font_size = ctx.font.trim().split(' ')[0];
           txtHeight = _parse_px_to_int(_font_size);
         }
         catch (e) { }
@@ -275,69 +322,213 @@
         }
 
         if (_point_per_lat < 1) { _point_per_lat = 1; }
-        _lat_b = parseInt(_lat_b - _point_per_lat, 10);
-        _lat_t = parseInt(_lat_t + _point_per_lat, 10);
+        if (_lat_b < -90) {
+          _lat_b = -90;
+        }
+        else {
+          _lat_b = parseInt(_lat_b - _point_per_lat, 10);
+        }
+
+        if (_lat_t > 90) {
+          _lat_t = 90;
+        }
+        else {
+          _lat_t = parseInt(_lat_t + _point_per_lat, 10);
+        }
+
         var _point_per_lon = (_lon_r - _lon_l) / (ww * 0.2);
         if (_point_per_lon < 1) { _point_per_lon = 1; }
+        if (_lon_l > 0 && _lon_r < 0) {
+          _lon_r += 360;
+        }
         _lon_r = parseInt(_lon_r + _point_per_lon, 10);
         _lon_l = parseInt(_lon_l - _point_per_lon, 10);
 
-        var ll, latstr, lngstr;
-
-        function __draw_lat_line (self, lat_tick) {
+        var ll, latstr, lngstr, _lon_delta = 0.5;
+        function __draw_lat_line (self, lat_tick, label, interval) {
           ll = self._latLngToCanvasPoint(L.latLng(lat_tick, _lon_l));
-          latstr = self.__format_lat(lat_tick);
+          latstr = self.__format_coord(lat_tick, label, interval);
           txtWidth = ctx.measureText(latstr).width;
+          var spacer = self.options.showLabel && label ? txtWidth + 10 : 0;
 
-          var __lon_right = _lon_r;
-          var rr = self._latLngToCanvasPoint(L.latLng(lat_tick, __lon_right));
+          if (curvedLat) {
+            if (typeof (curvedLat) == 'number') {
+              _lon_delta = curvedLat;
+            }
 
-          /*ctx.beginPath();
-          ctx.moveTo(ll.x + 1, ll.y);
-          ctx.lineTo(rr.x - 1, rr.y);
-          ctx.stroke();*/
+            var __lon_left = _lon_l, __lon_right = _lon_r;
+            if (ll.x > 0) {
+              var __lon_left = map.containerPointToLatLng(L.point(0, ll.y));
+              __lon_left = __lon_left.lng - _point_per_lon;
+              ll.x = 0;
+            }
+            var rr = self._latLngToCanvasPoint(L.latLng(lat_tick, __lon_right));
+            if (rr.x < ww) {
+              __lon_right = map.containerPointToLatLng(L.point(ww, rr.y));
+              __lon_right = __lon_right.lng + _point_per_lon;
+              if (__lon_left > 0 && __lon_right < 0) {
+                __lon_right += 360;
+              }
+            }
 
-          if (label) {
-            var _yy = ll.y + (txtHeight / 2) - 2;
-            ctx.fillText(latstr, 0, _yy);
-            ctx.fillText(latstr, ww - txtWidth, _yy);
+            ctx.beginPath();
+            ctx.moveTo(ll.x + spacer, ll.y);
+            var _prev_p = null;
+            for (var j = __lon_left; j <= __lon_right; j += _lon_delta) {
+              rr = self._latLngToCanvasPoint(L.latLng(lat_tick, j));
+              ctx.lineTo(rr.x - spacer, rr.y);
+
+              if (self.options.showLabel && label && _prev_p != null) {
+                if (_prev_p.x < 0 && rr.x >= 0) {
+                  var _s = (rr.x - 0) / (rr.x - _prev_p.x);
+                  var _y = rr.y - ((rr.y - _prev_p.y) * _s);
+                  ctx.fillText(latstr, 0, _y + (txtHeight / 2));
+                }
+                else if (_prev_p.x <= (ww - txtWidth) && rr.x > (ww - txtWidth)) {
+                  var _s = (rr.x - ww) / (rr.x - _prev_p.x);
+                  var _y = rr.y - ((rr.y - _prev_p.y) * _s);
+                  ctx.fillText(latstr, ww - txtWidth, _y + (txtHeight / 2) - 2);
+                }
+              }
+
+              _prev_p = { x: rr.x, y: rr.y, lon: j, lat: i };
+            }
+            ctx.stroke();
           }
+          else {
+            var __lon_right = _lon_r;
+            var rr = self._latLngToCanvasPoint(L.latLng(lat_tick, __lon_right));
+            if (curvedLon) {
+              __lon_right = map.containerPointToLatLng(L.point(0, rr.y));
+              __lon_right = __lon_right.lng;
+              rr = self._latLngToCanvasPoint(L.latLng(lat_tick, __lon_right));
 
+              var __lon_left = map.containerPointToLatLng(L.point(ww, rr.y));
+              __lon_left = __lon_left.lng;
+              ll = self._latLngToCanvasPoint(L.latLng(lat_tick, __lon_left));
+            }
+
+            ctx.beginPath();
+            ctx.moveTo(1 + spacer, ll.y);
+            ctx.lineTo(rr.x - 1 - spacer, rr.y);
+            ctx.stroke();
+            if (self.options.showLabel && label) {
+              var _yy = ll.y + (txtHeight / 2) - 2;
+              ctx.fillText(latstr, 0, _yy);
+              ctx.fillText(latstr, ww - txtWidth, _yy);
+            }
+          }
         };
 
         if (latInterval > 0) {
-          for (var i = 0; i <= _lat_t; i += latInterval) {
+          // this is hacky but serves a purpose of allowing interval options to be specified in meters (EPSG:3857).
+          // we want this to specify 10km, 1km, and 100m grid squares, so we need to convert the interval to degrees so that this tool will work, as it only takes degrees.
+          var latIntervalMeters = +latInterval;
+          var latIntervalLabel = 0;
+          var tgtPoint = proj4('EPSG:3857', 'EPSG:4326', [0, latInterval])
+          var latIntervalDegrees = turf.distance([0, 0], tgtPoint, { units: 'degrees' })
+
+          // console.debug('Lat grid calculations', {
+          //   latIntervalMeters,
+          //   latIntervalDegrees,
+          //   tgtPoint,
+          // })
+
+          // draw 0 lat line
+          __draw_lat_line(this, 0, 0);
+
+          // draw positive lat lines
+          for (var i = 0; i <= _lat_t; i += latIntervalDegrees, latIntervalLabel += latIntervalMeters) {
             if (i >= _lat_b) {
-              __draw_lat_line(this, i);
+              __draw_lat_line(this, i, latIntervalLabel, latIntervalMeters);
+            }
+          }
+
+          // draw negative lat lines
+          latIntervalLabel = 0;
+          for (var i = 0; i >= _lat_b; i -= latIntervalDegrees, latIntervalLabel -= latIntervalMeters) {
+            if (i <= _lat_t) {
+              __draw_lat_line(this, i, latIntervalLabel, latIntervalMeters);
             }
           }
         }
 
-        function __draw_lon_line (self, lon_tick) {
-          lngstr = self.__format_lng(lon_tick);
+        function __draw_lon_line (self, lon_tick, label, interval) {
+          lngstr = self.__format_coord(lon_tick, label, interval);
           txtWidth = ctx.measureText(lngstr).width;
           var bb = self._latLngToCanvasPoint(L.latLng(_lat_b, lon_tick));
+          var spacer = self.options.showLabel && label ? txtHeight + 5 : 0;
 
+          if (curvedLon) {
+            if (typeof (curvedLon) == 'number') {
+              _lat_delta = curvedLon;
+            }
 
-          var __lat_top = _lat_t;
-          var tt = self._latLngToCanvasPoint(L.latLng(__lat_top, lon_tick));
+            ctx.beginPath();
+            ctx.moveTo(bb.x, 5 + spacer);
+            var _prev_p = null;
+            for (var j = _lat_b; j < _lat_t; j += _lat_delta) {
+              var tt = self._latLngToCanvasPoint(L.latLng(j, lon_tick));
+              ctx.lineTo(tt.x, tt.y - spacer);
 
-          /*ctx.beginPath();
-          ctx.moveTo(tt.x, tt.y + 1);
-          ctx.lineTo(bb.x, bb.y - 1);
-          ctx.stroke();*/
+              if (self.options.showLabel && label && _prev_p != null) {
+                if (_prev_p.y > 8 && tt.y <= 8) {
+                  ctx.fillText(lngstr, tt.x - (txtWidth / 2), txtHeight + 5);
+                }
+                else if (_prev_p.y >= hh && tt.y < hh) {
+                  ctx.fillText(lngstr, tt.x - (txtWidth / 2), hh - 2);
+                }
+              }
 
-          if (label) {
-            ctx.fillText(lngstr, tt.x - (txtWidth / 2), txtHeight + 1);
-            ctx.fillText(lngstr, bb.x - (txtWidth / 2), hh - 3);
+              _prev_p = { x: tt.x, y: tt.y, lon: lon_tick, lat: j };
+            }
+            ctx.stroke();
           }
+          else {
+            var __lat_top = _lat_t;
+            var tt = self._latLngToCanvasPoint(L.latLng(__lat_top, lon_tick));
+            if (curvedLat) {
+              __lat_top = map.containerPointToLatLng(L.point(tt.x, 0));
+              __lat_top = __lat_top.lat;
+              if (__lat_top > 90) { __lat_top = 90; }
+              tt = self._latLngToCanvasPoint(L.latLng(__lat_top, lon_tick));
 
+              var __lat_bottom = map.containerPointToLatLng(L.point(bb.x, hh));
+              __lat_bottom = __lat_bottom.lat;
+              if (__lat_bottom < -90) { __lat_bottom = -90; }
+              bb = self._latLngToCanvasPoint(L.latLng(__lat_bottom, lon_tick));
+            }
+
+            ctx.beginPath();
+            ctx.moveTo(tt.x, 5 + spacer);
+            ctx.lineTo(bb.x, hh - 1 - spacer);
+            ctx.stroke();
+
+            if (self.options.showLabel && label) {
+              ctx.fillText(lngstr, tt.x - (txtWidth / 2), txtHeight + 5);
+              ctx.fillText(lngstr, bb.x - (txtWidth / 2), hh - 3);
+            }
+          }
         };
 
         if (lngInterval > 0) {
-          for (var i = 0; i <= _lon_r; i += lngInterval) {
+          // this is hacky but serves a purpose of allowing interval options to be specified in meters (EPSG:3857).
+          // we want this to specify 10km, 1km, and 100m grid squares, so we need to convert the interval to degrees so that this tool will work, as it only takes degrees.
+          var lngIntervalMeters = +lngInterval;
+          var lngIntervalLabel = 0;
+          var tgtPoint = proj4('EPSG:3857', 'EPSG:4326', [lngInterval, 0])
+          var lngIntervalDegrees = turf.distance([0, 0], tgtPoint, { units: 'degrees' })
+
+          // console.debug('lng grid calculations', {
+          //   lngIntervalMeters,
+          //   lngIntervalDegrees,
+          //   tgtPoint,
+          // })
+
+          // draw positive lng lines
+          for (var i = 0; i <= _lon_r; i += lngIntervalDegrees, lngIntervalLabel += lngIntervalMeters) {
             if (i >= _lon_l) {
-              __draw_lon_line(this, i);
+              __draw_lon_line(this, i, lngIntervalLabel, latIntervalMeters);
             }
           }
         }
@@ -345,10 +536,14 @@
     },
 
     _latLngToCanvasPoint: function (latlng) {
-      map = this._map;
-      var projectedPoint = map.project(L.latLng(latlng));
-      projectedPoint._subtract(map.getPixelOrigin());
-      return L.point(projectedPoint).add(map._getMapPanePos());
+      var map = this._map;
+      var projectedPoint = map.latLngToLayerPoint(L.latLng(latlng));
+
+      // console.debug('_latLngToCanvasPoint latlng', latlng);
+      // console.debug('_latLngToCanvasPoint projectedPoint', projectedPoint);
+      var finalPoint = L.point(projectedPoint).add(map._getMapPanePos());
+      // console.debug('_latLngToCanvasPoint finalPoint', finalPoint);
+      return finalPoint;
     }
 
   });
@@ -360,66 +555,6 @@
 
 }(this, document));
 
-/**
- * 
- * Author: jetelain
- */
-function MGRS_CRS (factorx, factory, tileWidth) {
-  return L.extend({}, L.CRS.Simple, {
-    projection: L.Projection.LonLat,
-    transformation: new L.Transformation(factorx, 0, -factory, tileWidth),
-    scale: function (zoom) {
-      return Math.pow(2, zoom);
-    },
-    zoom: function (scale) {
-      return Math.log(scale) / Math.LN2;
-    },
-    distance: function (latlng1, latlng2) {
-      var dx = latlng2.lng - latlng1.lng,
-        dy = latlng2.lat - latlng1.lat;
-      return Math.sqrt(dx * dx + dy * dy);
-    },
-    infinite: true
-  });
-}
-
-/**
- * Arma3 Maps data and utility functions
- *
- * Author: jetelain
- */
-var Arma3Map = {
-
-  Maps: {},
-
-  toCoord: function (num, precision) {
-    if (precision === undefined || precision > 5) {
-      precision = 4;
-    }
-    if (num <= 0) {
-      return '0'.repeat(precision);
-    }
-    var numText = "00000" + num.toFixed(0);
-    return numText.substr(numText.length - 5, precision);
-  },
-
-  toGrid: function (latlng, precision) {
-    return Arma3Map.toCoord(latlng.lng, precision) + " - " + Arma3Map.toCoord(latlng.lat, precision);
-  },
-
-  bearing: function (latlng1, latlng2) {
-    return ((Math.atan2(latlng2.lng - latlng1.lng, latlng2.lat - latlng1.lat) * 180 / Math.PI) + 360) % 360;
-  }
-
-};
-
-function toCoord (num) { // backward compatibility
-  return Arma3Map.toCoord(num, 4);
-}
-
-function toGrid (latlng) { // backward compatibility
-  return Arma3Map.toGrid(latlng, 4);
-}
 
 /**
  * Display mouse MGRS coordinates on map
@@ -447,21 +582,12 @@ L.Control.GridMousePosition = L.Control.extend({
 
   _onMouseMove: function (e) {
     var coord_4326 = e.latlng;
-    var coord_3857 = proj4("EPSG:4326", "EPSG:3857", [coord_4326.lng, coord_4326.lat]);
-
-    // console.debug(coord_3857)
-    coord_3857 = {
-      lng: coord_3857[0],
-      lat: coord_3857[1]
-    }
-    // console.debug(coord_3857)
-    var mousePositionXY = Arma3Map.toGrid(coord_3857, 4)
-
-
-
-    this.mousePositionMGRS = mousePositionXY;
-    // this._container.innerHTML = Arma3Map.toGrid(e.latlng, this.options.precision);
+    var mgrsStr = latlngToMGRS(coord_4326.lat, coord_4326.lng, this.options.precision);
+    var mousePositionXY = mgrsStr[0] + " " + mgrsStr[1];
+    // console.debug(mgrsStr);
+    // console.debug(mousePositionXY)
     this._container.innerHTML = `Grid: ${mousePositionXY}`;
+
   }
 
 });
@@ -470,77 +596,34 @@ L.control.gridMousePosition = function (options) {
   return new L.Control.GridMousePosition(options);
 };
 
-/**
- * Display a bootstrap button on map
- *
- * Author: jetelain
- */
-L.Control.OverlayButton = L.Control.extend({
-  options: {
-    position: 'bottomright',
-    baseClassName: 'btn',
-    className: 'btn-outline-secondary',
-    content: '',
-    click: null
-  },
+function latLngTo3857 (lat, lng) {
+  return proj4("EPSG:4326", "EPSG:3857", [lng, lat]);
+}
 
-  _previousClass: '',
+function latlngToMGRS (lat, lng, precision = 4) {
+  // console.debug("latlngToMGRS", lat, lng, precision);
+  var coord_3857 = latLngTo3857(lat, lng);
+  // console.debug("coord_3857", coord_3857)
+  var mercatorStr = [
+    Math.abs(coord_3857[0]).toFixed(0).toString(),
+    Math.abs(coord_3857[1]).toFixed(0).toString()
+  ];
 
-  onAdd: function (map) {
-    this._previousClass = this.options.className;
-    this._container = L.DomUtil.create('button', this.options.baseClassName + ' ' + this.options.className);
-    L.DomEvent.disableClickPropagation(this._container);
-    this._container.innerHTML = this.options.content;
-    if (this.options.click) {
-      $(this._container).on('click', this.options.click);
-    }
-    return this._container;
-  },
+  mercatorStr.forEach((str, i) => {
+    // limit to precision characters
+    mercatorStr[i] = str.substring(0, precision);
+    // pad with 0s to precision characters
+    mercatorStr[i] = mercatorStr[i].padStart(precision, "0");
+  });
 
-  onRemove: function (map) {
+  // * add negative sign if needed
+  coord_3857[0] < 0
+    ? (mercatorStr[0] = "-" + mercatorStr[0])
+    : (mercatorStr[0] = mercatorStr[0]);
+  coord_3857[1] < 0
+    ? (mercatorStr[1] = "-" + mercatorStr[1])
+    : (mercatorStr[1] = mercatorStr[1]);
 
-  },
+  return mercatorStr;
+}
 
-  j: function () {
-    return $(this._container);
-  },
-
-  setClass: function (name) {
-    $(this._container).removeClass(this._previousClass);
-    $(this._container).addClass(name);
-    this._previousClass = name;
-  }
-});
-
-L.control.overlayButton = function (options) {
-  return new L.Control.OverlayButton(options);
-};
-
-/**
- * Display an arbitrary div on map
- *
- * Author: jetelain
- */
-L.Control.OverlayDiv = L.Control.extend({
-  options: {
-    position: 'bottomright',
-    content: ''
-  },
-
-  _previousClass: '',
-
-  onAdd: function (map) {
-    this._container = L.DomUtil.create('div', '');
-    L.DomEvent.disableClickPropagation(this._container);
-    $(this._container).append(this.options.content);
-    return this._container;
-  },
-
-  onRemove: function (map) {
-
-  }
-});
-
-L.control.overlayDiv = function (options) {
-  return new L.Control.OverlayDiv(options);
-};
