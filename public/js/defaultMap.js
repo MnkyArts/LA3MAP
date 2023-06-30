@@ -186,7 +186,7 @@ function InitMap (worldMeta) {
           preConfirm: () => {
             imageUrl = document.getElementById('image-url').value;
             description = document.getElementById('description').value;
-            if (!imageUrl) {
+            if (!imageUrl || imageUrl == '') {
               imageUrl = 'https://i.imgur.com/SY0C1lx.png';
             }
             var icon = L.icon({
