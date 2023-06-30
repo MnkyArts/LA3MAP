@@ -134,8 +134,8 @@ function InitMap (worldMeta) {
       fontColor: '#777',
       zoomInterval: [
         { start: 12, end: 13, interval: 10000 },
-        { start: 13, end: 15, interval: 1000 },
-        { start: 15, end: 20, interval: 100 }
+        { start: 13, end: 16, interval: 1000 },
+        { start: 16, end: 20, interval: 100 }
       ]
     }).addTo(map);
 

@@ -605,15 +605,14 @@ function latlngToMGRS (lat, lng, precision = 4) {
   var coord_3857 = latLngTo3857(lat, lng);
   // console.debug("coord_3857", coord_3857)
   var mercatorStr = [
-    Math.abs(coord_3857[0]).toFixed(0).toString(),
-    Math.abs(coord_3857[1]).toFixed(0).toString()
+    Math.abs(coord_3857[0] / 10).toFixed(0).toString(),
+    Math.abs(coord_3857[1] / 10).toFixed(0).toString()
   ];
 
-  mercatorStr.forEach((str, i) => {
-    // limit to precision characters
-    mercatorStr[i] = str.substring(0, precision);
-    // pad with 0s to precision characters
-    mercatorStr[i] = mercatorStr[i].padStart(precision, "0");
+
+
+  mercatorStr = mercatorStr.map((coord) => {
+    return `${coord}`.padStart(precision, '0')
   });
 
   // * add negative sign if needed
