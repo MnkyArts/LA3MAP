@@ -4,6 +4,7 @@ const path = require('path');
 const bodyParser = require('body-parser');
 const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
+const os = require('os');
 
 const app = express();
 const port = 3000;
@@ -32,20 +33,17 @@ app.get('/', (req, res) => {
   // save to DB with worldname
 
   var worldname = "chernarus";
-  DB.run(
-    'INSERT INTO sessions (id, worldname) VALUES (?, ?)',
-    [sessionId, worldname],
-    (err) => {
-      console.error('Error creating new drawing session:', err);
-      if (err) {
-        res.status(500).json({
-          message: 'Error creating new drawing session',
-          success: false,
-        });
-      } else {
-        console.log('Drawing session created successfully.');
-        res.redirect(`/draw?session=${sessionId}`);
-      }
+  return createSession(worldname)
+    .then((sessionId) => {
+      console.log('New session created:', sessionId);
+      res.redirect(`/draw?session=${sessionId}`);
+    })
+    .catch((err) => {
+      console.error('Error creating new session:', err);
+      res.status(500).json({
+        message: 'Error creating new session',
+        success: false,
+      });
     });
 });
 
@@ -116,20 +114,20 @@ app.get('/drawings', (req, res) => {
       res.json(drawings);
     }
   });
+
+  getDrawings()
 });
 
 // GET route to retrieve all drawings for a session
 app.get('/drawings/:session', (req, res) => {
-  DB.all('SELECT * FROM drawings WHERE session_id = ?', [req.params.session], (err, rows) => {
+
+  const sessionId = req.params.session;
+
+  getDrawings(sessionId, (err, drawings) => {
     if (err) {
       console.error('Error loading drawings:', err);
       res.status(500).send('Error loading drawings');
     } else {
-      // console.log(rows);
-      const drawings = rows.map((row) => {
-        row.data = JSON.parse(row.data);
-        return row;
-      })
       res.json(drawings);
     }
   });
@@ -244,6 +242,28 @@ app.post('/import', (req, res) => {
 });
 
 
+// Route to get JSON of all markers available
+app.get('/markers', (req, res) => {
+  getMarkers((err, markers) => {
+    if (err) {
+      console.error('Error loading markers:', err);
+      res.status(500).send('Error loading markers');
+    } else {
+      json = {};
+      for (let marker of markers) {
+        json[marker.addon] = json[marker.addon] || [];
+        json[marker.addon].push({
+          name: marker.marker_name,
+          url: marker.url
+        });
+      }
+      console.log(json);
+      res.json(json);
+    }
+  });
+});
+
+
 // Route to check if the user is logged in
 app.get('/loginStatus', (req, res) => {
   const isLoggedIn = req.session.isLoggedIn;
@@ -254,6 +274,11 @@ app.get('/loginStatus', (req, res) => {
 
 // Serve static files from the "public" directory
 app.use(express.static('public'));
+
+
+/////////////////////////////////////
+// FUNCTIONS
+/////////////////////////////////////
 
 
 // connect sqlite
@@ -279,7 +304,16 @@ function createDB () {
     'CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, worldname TEXT NOT NULL);',
     'CREATE TABLE IF NOT EXISTS drawings (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, data TEXT NOT NULL, description TEXT, color TEXT, imageUrl TEXT, FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE);',
     'CREATE INDEX IF NOT EXISTS idx_drawings_session_id ON drawings (session_id);',
-    'INSERT OR IGNORE INTO users (username, password) VALUES ("admin", "password");'
+    'INSERT OR IGNORE INTO users (username, password) VALUES ("admin", "password");',
+    `DROP TABLE IF EXISTS markers;`,
+    `CREATE TABLE IF NOT EXISTS markers (
+	id INTEGER PRIMARY KEY,
+	addon TEXT,
+	marker_name TEXT,
+	url TEXT
+);`,
+    `CREATE INDEX IF NOT EXISTS idx_markers_addon ON markers (addon);`,
+
   ];
 
   sql.forEach((query) => {
@@ -293,8 +327,125 @@ function createDB () {
   });
 };
 
+
+// generate a new session for DB
+async function createSession (worldname) {
+  const sessionId = uuidv4();
+  DB.all(
+    'INSERT INTO sessions (id, worldname) VALUES (?, ?)',
+    [sessionId, worldname],
+    (err) => {
+      if (err) {
+        console.error('Error creating session:', err);
+        return Promise.reject(err);
+      }
+    });
+  return Promise.resolve(sessionId);
+}
+
+
+// get all drawings from DB for a specific session
+function getDrawings (sessionId, callback) {
+  DB.all('SELECT * FROM drawings WHERE session_id = ?', [sessionId], (err, rows) => {
+    if (err) {
+      console.error('Error querying DB for drawings:', err);
+      return callback(new Error('Error querying DB for drawings:' + err), []);
+    } else {
+      const drawings = rows.map((row) => {
+        row.data = JSON.parse(row.data);
+        return row;
+      })
+      return callback(null, drawings);
+    }
+  });
+}
+
+
+// get all sessions from DB
+function getSessions (callback) {
+  DB.all('SELECT * FROM sessions', (err, rows) => {
+    if (err) {
+      console.error('Error querying DB for sessions:', err);
+      return callback(new Error('Error querying DB for sessions:' + err), []);
+    } else {
+      return callback(null, rows);
+    }
+  });
+}
+
+
+// get all /public/markers/{addon}/{marker}.png
+function loadMarkers (callback) {
+  fs.readdir('public/markers', (err, addons) => {
+    if (err) {
+      console.error('Error reading markers:', err);
+      return callback(new Error('Error reading markers:' + err), []);
+    } else {
+      const markers = addons.map((addon) => {
+        return fs.readdirSync(`public/markers/${addon}`).map((marker) => {
+          return {
+            addon: addon,
+            name: path.basename(marker).split('.')[0],
+            url: `/markers/${addon}/${marker}`
+          };
+        })
+      });
+      return callback(null, markers);
+    }
+  });
+}
+
+// write marker addon, basename, and url to DB
+function addMarkerToDB (marker, callback) {
+  DB.all(
+    'INSERT INTO markers (addon, marker_name, url) VALUES (?, ?, ?)',
+    [marker.addon, marker.name, marker.url],
+    (err) => {
+      if (err) {
+        console.error('Error adding marker:', err);
+        return callback(new Error('Error adding marker:' + err));
+      } else {
+        return callback(null);
+      }
+    });
+}
+
+// get all markers from DB & send to client as JSON
+function getMarkers (callback) {
+  DB.all('SELECT * FROM markers', (err, rows) => {
+    if (err) {
+      console.error('Error querying DB for markers:', err);
+      return callback(new Error('Error querying DB for markers:' + err), []);
+    } else {
+      return callback(null, rows);
+    }
+  });
+}
+
+
+
+/////////////////////////////////////
+// START SERVER
+/////////////////////////////////////
+
 const DB = connectDB();
 createDB();
+
+loadMarkers((err, markers) => {
+  if (err) {
+    console.error('Error getting markers:', err);
+  } else {
+    markers.forEach((addon) => {
+      addon.forEach((marker) => {
+        addMarkerToDB(marker, (err) => {
+          if (err) {
+            console.error('Error adding marker:', err);
+          }
+        });
+      });
+    });
+  }
+});
 
 // Start the server
 app.listen(port, () => {
