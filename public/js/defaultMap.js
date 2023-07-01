@@ -133,9 +133,9 @@ function InitMap (worldMeta) {
       font: '12px/1.5 "Helvetica Neue", Arial, Helvetica, sans-serif',
       fontColor: '#777',
       zoomInterval: [
-        { start: 12, end: 13, interval: 0.1 },
-        { start: 13, end: 15, interval: 0.01 },
-        { start: 15, end: 20, interval: 0.001 }
+        { start: 12, end: 13, interval: 10000 },
+        { start: 13, end: 16, interval: 1000 },
+        { start: 16, end: 20, interval: 100 }
       ]
     }).addTo(map);
 
@@ -186,7 +186,7 @@ function InitMap (worldMeta) {
           preConfirm: () => {
             imageUrl = document.getElementById('image-url').value;
             description = document.getElementById('description').value;
-            if (!imageUrl) {
+            if (!imageUrl || imageUrl == '') {
               imageUrl = 'https://i.imgur.com/SY0C1lx.png';
             }
             var icon = L.icon({
