@@ -163,6 +163,79 @@ function InitMap (worldMeta) {
     }
 
 
+    // load w/ content
+    async function fetchAvailableMarkers () {
+      return fetch('/markers')
+        .then((response) => response.json())
+        .then((data) => {
+          console.debug('Loaded markers', data)
+          return data;
+        });
+    }
+
+
+    fetchAvailableMarkers().then(async (markers) => {
+
+      var markerSelectContainer = document.getElementById('marker-select-container');
+
+      // select addon keys of all markers array and dedupe
+      var addons = [...new Set(markers.addon)];
+
+      // Add markers to the marker select
+      for (let addon of addons) {
+        // Add a header for the addon
+        var addonHeader = document.createElement('h3');
+        addonHeader.innerHTML = addon;
+        markerSelectContainer.appendChild(addonHeader);
+        // Add a container for the addon's markers
+        var markerSelect = document.createElement('div');
+        markerSelect.className = 'marker-select';
+        markerSelectContainer.appendChild(markerSelect);
+
+        // Add each marker to the marker select
+        // get all markers where addon matches
+        for (let marker of markers.all) {
+          if (marker.addon === addon) {
+            var markerOption = document.createElement('div');
+            markerOption.className = 'marker-select-option';
+            markerOption.innerHTML = `<span class="marker-select-name">${marker.name}</span><img src="${marker.url}" class="marker-select-image" />`;
+            markerOption.addEventListener('click', function () {
+              // Set the marker image
+              var markerImage = document.getElementById('image-url');
+              markerImage.value = marker.url;
+              // Set the marker description
+              var markerDescription = document.getElementById('description');
+              markerDescription.value = marker.description;
+            });
+            markerSelect.appendChild(markerOption);
+          }
+        }
+      }
+    });
+
+    // Function to prompt the user to select a marker
+    function promptMarkerSelection () {
+      // open a dialog to select a marker
+      Swal.fire({
+        title: 'Select a Marker',
+        html: document.getElementById('marker-select-container'),
+        showConfirmButton: false,
+        showCloseButton: true,
+        showCancelButton: true,
+        cancelButtonText: 'Cancel',
+        cancelButtonColor: '#d33',
+        onOpen: () => {
+          // Add a listener to the marker select button
+          document.getElementById('marker-select-button').addEventListener('click', function () {
+            Swal.close();
+          });
+        }
+      });
+    }
+
+    // promptMarkerSelection()
+
+
     // Update the 'pm:create' event listener
     map.on('pm:create', function (event) {
       console.log(event.shape);
@@ -176,7 +249,8 @@ function InitMap (worldMeta) {
           html: `
                     <p>Marker URL</p>
                     <input id="image-url" class="swal2-input" placeholder="Enter the URL of the marker image">
-                    <p>Description</p>
+                    <p>You can also click here to select a marker image</p>
+                    <button id="marker-select-button" class="swal2-input" style="width: 100%; height: 50px; border: 1px solid #ccc; border-radius: 5px; background-color: white; margin-bottom: 10px;" onClick="promptMarkerSelection()">Select Marker</button>
                     <textarea id="description" rows="4" class="swal2-textarea" placeholder="Enter a description for the drawing"></textarea>
                   `,
           showCancelButton: true,
@@ -369,7 +443,7 @@ function InitMap (worldMeta) {
         success: function (drawings) {
           drawings.forEach(function (drawing) {
             var layer;
-            if (drawing.data.geometry.type === 'Point') {
+            if (drawing.data.type === 'Point') {
               var icon = L.icon({
                 iconUrl: drawing.imageUrl,
                 iconSize: [25, 41], // Adjust the size of the icon if needed
