@@ -443,7 +443,7 @@ function InitMap (worldMeta) {
         success: function (drawings) {
           drawings.forEach(function (drawing) {
             var layer;
-            if (drawing.data.geometry.type === 'Point') {
+            if (drawing.data.type === 'Point') {
               var icon = L.icon({
                 iconUrl: drawing.imageUrl,
                 iconSize: [25, 41], // Adjust the size of the icon if needed
