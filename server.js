@@ -10,6 +10,7 @@ const app = express();
 const port = 3000;
 
 const sqlite3 = require('sqlite3').verbose();
+const { Sequelize, DataTypes } = require('sequelize');
 const dbFile = 'app.db';
 
 // Middleware to parse JSON data
@@ -27,13 +28,13 @@ app.use(
 );
 
 // Route for index.html
-app.get('/', (req, res) => {
+app.get('/', async (req, res) => {
   // Generate a new UUID for the drawing session
   const sessionId = uuidv4();
   // save to DB with worldname
 
   var worldname = "chernarus";
-  return createSession(worldname)
+  return await createSession(worldname)
     .then((sessionId) => {
       console.log('New session created:', sessionId);
       res.redirect(`/draw?session=${sessionId}`);
@@ -68,30 +69,33 @@ app.post('/login', (req, res) => {
   const { username, password } = req.body;
 
   // Query DB for users with provided credentials
-  DB.all(
-    'SELECT * FROM users WHERE username = ? AND password = ?',
-    [username, password],
-    (err, rows) => {
-      if (err) {
-        console.error('Error querying DB for users:', err);
-        res.status(500).json({
-          success: false,
-          message: 'Error querying DB for users',
+  User.findOne({
+    where: {
+      username: username,
+      password: password,
+    },
+  })
+    .then((user) => {
+      if (user) {
+        // Set the logged-in state for the session
+        req.session.isLoggedIn = true;
+        res.json({
+          success: true,
+          message: 'Logged in successfully',
         });
       } else {
-        if (rows.length > 0) {
-          // Store the logged-in state in the session
-          req.session.isLoggedIn = true;
-          res.json({
-            success: true
-          });
-        } else {
-          res.status(401).json({
-            success: false,
-            message: 'Invalid credentials'
-          });
-        }
+        res.status(401).json({
+          success: false,
+          message: 'Invalid credentials',
+        });
       }
+    })
+    .catch((err) => {
+      console.error('Error querying DB for users:', err);
+      res.status(500).json({
+        success: false,
+        message: 'Error querying DB for users',
+      });
     });
 });
 
@@ -103,40 +107,37 @@ app.post('/logout', (req, res) => {
   res.sendStatus(200);
 });
 
-// GET route to retrieve all drawings
-app.get('/drawings', (req, res) => {
-  fs.readFile('drawings.json', 'utf8', (err, data) => {
-    if (err) {
-      console.error('Error loading drawings:', err);
-      res.status(500).send('Error loading drawings');
-    } else {
-      const drawings = JSON.parse(data);
-      res.json(drawings);
-    }
-  });
-
-  getDrawings()
-});
-
 // GET route to retrieve all drawings for a session
 app.get('/drawings/:session', (req, res) => {
 
   const sessionId = req.params.session;
 
-  getDrawings(sessionId, (err, drawings) => {
-    if (err) {
-      console.error('Error loading drawings:', err);
-      res.status(500).send('Error loading drawings');
-    } else {
+  // Query DB for drawings with the provided session ID
+  Drawing.findAll({
+    where: {
+      session_id: sessionId,
+    },
+  })
+    .then((drawings) => {
+      // convert drawing.data to JSON
+      drawings = drawings.map((drawing) => {
+        drawing.data = JSON.parse(drawing.data);
+        return drawing;
+      });
       res.json(drawings);
-    }
-  });
+    })
+    .catch((err) => {
+      console.error('Error querying DB for drawings:', err);
+      res.status(500).json({
+        success: false,
+        message: 'Error querying DB for drawings',
+      });
+    });
 });
 
 // POST route to save a new drawing
-app.post('/drawings/:session', (req, res) => {
+app.post('/drawings/:session', async (req, res) => {
   if (req.session.isLoggedIn) {
-    const drawings = [];
     const newDrawing = {
       id: uuidv4(), // Add a unique ID to the drawing
       session_id: req.params.session,
@@ -145,25 +146,17 @@ app.post('/drawings/:session', (req, res) => {
       color: req.body.color, // Add the color property
       imageUrl: req.body.imageUrl, // Add the imageUrl property
     };
-    drawings.push(newDrawing);
 
-    // save to database
-    for (let drawing of drawings) {
-      DB.all(
-        'INSERT INTO drawings (id, session_id, data, description, color, imageUrl) VALUES (?, ?, ?, ?, ?, ?)',
-        [drawing.id, drawing.session_id, drawing.data, drawing.description, drawing.color, drawing.imageUrl],
-        (err) => {
-          if (err) {
-            console.error('Error saving drawing:', err);
-            res.status(500).send('Error saving drawing');
-          } else {
-            res.status(200).json({
-              success: true,
-              id: drawing.id
-            }); // Include the ID in the response
-          }
+    // Save the new drawing to DB
+    Drawing.create(newDrawing)
+
+      .then((drawing) => {
+        res.json({
+          success: true,
+          message: 'Drawing saved successfully',
+          drawing: drawing,
         });
-    }
+      })
   } else {
     res.status(401).json({
       success: false,
@@ -178,29 +171,31 @@ app.delete('/drawings/:id', (req, res) => {
 
     const drawingId = req.params.id;
 
-    DB.all('SELECT * FROM drawings WHERE id = ?', [drawingId], (err, rows) => {
-      if (err) {
-        console.error('Error querying DB for drawings:', err);
-        res.status(500).send('Error querying DB for drawings');
-      } else {
-        const drawings = rows;
-        const drawingIndex = drawings.findIndex((drawing) => drawing.id === drawingId);
-
-        if (drawingIndex !== -1) {
-          // DELETE the drawing from DB
-          DB.all('DELETE FROM drawings WHERE id = ?', [drawingId], (err) => {
-            if (err) {
-              console.error('Error deleting drawing:', err);
-              res.status(500).send('Error deleting drawing');
-            } else {
-              res.sendStatus(200);
-            }
-          });
+    // Query DB for drawing with the provided ID
+    Drawing.findOne({
+      where: {
+        id: drawingId,
+      },
+    })
+      .then((drawing) => {
+        if (drawing) {
+          // Delete the drawing from DB
+          drawing.destroy();
+          res.sendStatus(200);
         } else {
-          res.status(404).send('Drawing not found');
+          res.status(404).json({
+            success: false,
+            message: 'Drawing not found',
+          });
         }
-      }
-    });
+      })
+      .catch((err) => {
+        console.error('Error querying DB for drawing:', err);
+        res.status(500).json({
+          success: false,
+          message: 'Error querying DB for drawing',
+        });
+      });
   } else {
     res.status(401).json({
       success: false,
@@ -208,6 +203,13 @@ app.delete('/drawings/:id', (req, res) => {
     });
   }
 });
+
+
+// get all markers from DB & send to client as JSON
+async function getMarkers () {
+  const markers = await Marker.findAll();
+  return Promise.resolve(markers)
+}
 
 
 // Export drawings.json
@@ -243,24 +245,9 @@ app.post('/import', (req, res) => {
 
 
 // Route to get JSON of all markers available
-app.get('/markers', (req, res) => {
-  getMarkers((err, markers) => {
-    if (err) {
-      console.error('Error loading markers:', err);
-      res.status(500).send('Error loading markers');
-    } else {
-      json = {};
-      for (let marker of markers) {
-        json[marker.addon] = json[marker.addon] || [];
-        json[marker.addon].push({
-          name: marker.marker_name,
-          url: marker.url
-        });
-      }
-      console.log(json);
-      res.json(json);
-    }
-  });
+app.get('/markers', async (req, res) => {
+  const markers = await Marker.findAll();
+  res.json(markers);
 });
 
 
@@ -277,150 +264,157 @@ app.use(express.static('public'));
 
 
 /////////////////////////////////////
-// FUNCTIONS
+// DATABASE
 /////////////////////////////////////
 
+// create/connect database
+const sequelize = new Sequelize({
+  dialect: 'sqlite',
+  storage: dbFile,
+  // logging: false,
+  // transactionType: 'IMMEDIATE',
+  retry: {
+    max: 10
+  }
+});
 
-// connect sqlite
-function connectDB () {
-  const db = new sqlite3.Database(dbFile);
-  // enable foreign keys
-  db.exec('PRAGMA foreign_keys = ON;', (err) => {
-    if (err) {
-      console.error('Pragma statement failed:', err);
-    } else {
-      console.log('SQLite Foreign Key Enforcement is on.');
-    }
-  });
+const Drawing = sequelize.define('Drawing', {
+  id: {
+    type: Sequelize.UUID,
+    defaultValue: Sequelize.UUIDV4,
+    primaryKey: true,
+  },
+  data: Sequelize.TEXT,
+  description: Sequelize.TEXT,
+  color: Sequelize.TEXT,
+  imageUrl: Sequelize.TEXT,
+});
 
-  return db;
-}
+const Session = sequelize.define('Session', {
+  id: {
+    type: Sequelize.UUID,
+    defaultValue: Sequelize.UUIDV4,
+    primaryKey: true,
+  },
+  worldname: Sequelize.TEXT,
+});
 
-// create tables if they don't exist
-function createDB () {
-  var sql = [
-    // 'PRAGMA foreign_keys = ON;', // Enable foreign key constraints
-    'CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, password TEXT NOT NULL);',
-    'CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, worldname TEXT NOT NULL);',
-    'CREATE TABLE IF NOT EXISTS drawings (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, data TEXT NOT NULL, description TEXT, color TEXT, imageUrl TEXT, FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE);',
-    'CREATE INDEX IF NOT EXISTS idx_drawings_session_id ON drawings (session_id);',
-    'INSERT OR IGNORE INTO users (username, password) VALUES ("admin", "password");',
-    `DROP TABLE IF EXISTS markers;`,
-    `CREATE TABLE IF NOT EXISTS markers (
-	id INTEGER PRIMARY KEY,
-	addon TEXT,
-	marker_name TEXT,
-	url TEXT
-);`,
-    `CREATE INDEX IF NOT EXISTS idx_markers_addon ON markers (addon);`,
+const User = sequelize.define('User', {
+  username: {
+    type: Sequelize.TEXT,
+    unique: true,
+  },
+  password: Sequelize.TEXT,
+  role: Sequelize.TEXT,
+});
 
-  ];
 
-  sql.forEach((query) => {
-    // setTimeout(() => {
-    //   timer += 1000;
-    DB.exec(query, (err) => {
-      if (err) {
-        console.error('Error creating tables:', err);
+const Marker = sequelize.define('Marker', {
+  id: {
+    type: Sequelize.UUID,
+    defaultValue: Sequelize.UUIDV4,
+    primaryKey: true,
+  },
+  addon: {
+    type: Sequelize.TEXT,
+  },
+  marker_name: {
+    type: Sequelize.TEXT,
+  },
+  url: Sequelize.TEXT
+},
+  {
+    indexes: [
+      {
+        unique: true,
+        fields: ['addon', 'marker_name']
       }
-    });
-  });
-};
+    ]
+  }
+);
+
+// define relationships
+Drawing.Session = Drawing.belongsTo(Session, {
+  foreignKey: 'session_id',
+  onDelete: 'CASCADE',
+});
+Session.Drawings = Session.hasMany(Drawing, {
+  foreignKey: 'session_id',
+  onDelete: 'CASCADE',
+})
 
 
 // generate a new session for DB
 async function createSession (worldname) {
-  const sessionId = uuidv4();
-  DB.all(
-    'INSERT INTO sessions (id, worldname) VALUES (?, ?)',
-    [sessionId, worldname],
-    (err) => {
-      if (err) {
-        console.error('Error creating session:', err);
-        return Promise.reject(err);
-      }
-    });
-  return Promise.resolve(sessionId);
-}
-
-
-// get all drawings from DB for a specific session
-function getDrawings (sessionId, callback) {
-  DB.all('SELECT * FROM drawings WHERE session_id = ?', [sessionId], (err, rows) => {
-    if (err) {
-      console.error('Error querying DB for drawings:', err);
-      return callback(new Error('Error querying DB for drawings:' + err), []);
-    } else {
-      const drawings = rows.map((row) => {
-        row.data = JSON.parse(row.data);
-        return row;
-      })
-      return callback(null, drawings);
-    }
+  const session = await Session.create({
+    worldname,
   });
+  return session.id;
 }
-
 
 // get all sessions from DB
-function getSessions (callback) {
-  DB.all('SELECT * FROM sessions', (err, rows) => {
-    if (err) {
-      console.error('Error querying DB for sessions:', err);
-      return callback(new Error('Error querying DB for sessions:' + err), []);
-    } else {
-      return callback(null, rows);
-    }
-  });
+async function getSessions () {
+  const sessions = await Session.findAll();
+  return Promise.resolve(sessions)
 }
 
 
 // get all /public/markers/{addon}/{marker}.png
-function loadMarkers (callback) {
-  fs.readdir('public/markers', (err, addons) => {
-    if (err) {
-      console.error('Error reading markers:', err);
-      return callback(new Error('Error reading markers:' + err), []);
-    } else {
-      const markers = addons.map((addon) => {
-        return fs.readdirSync(`public/markers/${addon}`).map((marker) => {
-          return {
-            addon: addon,
-            name: path.basename(marker).split('.')[0],
-            url: `/markers/${addon}/${marker}`
-          };
-        })
-      });
-      return callback(null, markers);
-    }
-  });
+function loadMarkers () {
+  const addons = fs.readdirSync('public/markers')
+
+  console.log('addon count:', addons.length)
+
+  const markers = addons.reduce((acc, addon) => {
+    const addonPath = path.join('public/markers', addon)
+    const markerNames = fs.readdirSync(addonPath)
+
+    const addonMarkers = markerNames.map((markerName) => {
+      const markerPath = path.join(addonPath, markerName)
+      const url = path.join('markers', addon, markerName)
+      return {
+        addon,
+        marker_name: markerName,
+        url,
+      }
+    })
+
+    return acc.concat(addonMarkers)
+  }, [])
+
+  return Promise.resolve(markers);
 }
 
 // write marker addon, basename, and url to DB
-function addMarkerToDB (marker, callback) {
-  DB.all(
-    'INSERT INTO markers (addon, marker_name, url) VALUES (?, ?, ?)',
-    [marker.addon, marker.name, marker.url],
-    (err) => {
-      if (err) {
-        console.error('Error adding marker:', err);
-        return callback(new Error('Error adding marker:' + err));
-      } else {
-        return callback(null);
-      }
+async function addMarkersToDB () {
+  const markers = await loadMarkers();
+
+  // create all returned markers in DB
+  const result = await sequelize.transaction(async (t) => {
+
+    const promises = await markers.map((marker) => {
+      return Marker.findOrCreate({
+        where: {
+          addon: marker.addon,
+          marker_name: marker.marker_name,
+          url: marker.url,
+        },
+        defaults: {
+          addon: marker.addon,
+          marker_name: marker.marker_name,
+          url: marker.url,
+        },
+        transaction: t,
+      });
     });
+
+    return Promise.all(promises);
+  });
+
+  console.log('Markers loaded to DB:', result.length);
 }
 
-// get all markers from DB & send to client as JSON
-function getMarkers (callback) {
-  DB.all('SELECT * FROM markers', (err, rows) => {
-    if (err) {
-      console.error('Error querying DB for markers:', err);
-      return callback(new Error('Error querying DB for markers:' + err), []);
-    } else {
-      return callback(null, rows);
-    }
-  });
-}
+
 
 
 
@@ -428,24 +422,29 @@ function getMarkers (callback) {
 // START SERVER
 /////////////////////////////////////
 
-const DB = connectDB();
-createDB();
 
-loadMarkers((err, markers) => {
-  if (err) {
-    console.error('Error getting markers:', err);
-  } else {
-    markers.forEach((addon) => {
-      addon.forEach((marker) => {
-        addMarkerToDB(marker, (err) => {
-          if (err) {
-            console.error('Error adding marker:', err);
-          }
-        });
-      });
+// init database
+sequelize.sync()
+  .then(async () => {
+    console.log('Database initialized');
+    // create admin user
+    await User.findOrCreate({
+      where: {
+        username: 'admin',
+      },
+      defaults: {
+        password: 'password',
+        role: 'admin',
+      },
     });
-  }
-});
+
+    // init markers
+    await addMarkersToDB();
+  })
+  .catch((err) => {
+    console.error('Error initializing database:', err);
+  });
+
 
 // Start the server
 app.listen(port, () => {

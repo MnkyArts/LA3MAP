@@ -169,12 +169,6 @@ function InitMap (worldMeta) {
         .then((response) => response.json())
         .then((data) => {
           console.debug('Loaded markers', data)
-          // log sum of count of markers in each key of object
-          var total = 0;
-          for (let key in data) {
-            total += data[key].length;
-          }
-          console.debug('Total markers', total);
           return data;
         });
     }
@@ -183,8 +177,12 @@ function InitMap (worldMeta) {
     fetchAvailableMarkers().then(async (markers) => {
 
       var markerSelectContainer = document.getElementById('marker-select-container');
+
+      // select addon keys of all markers array and dedupe
+      var addons = [...new Set(markers.addon)];
+
       // Add markers to the marker select
-      for (let addon of Object.keys(markers)) {
+      for (let addon of addons) {
         // Add a header for the addon
         var addonHeader = document.createElement('h3');
         addonHeader.innerHTML = addon;
@@ -195,19 +193,22 @@ function InitMap (worldMeta) {
         markerSelectContainer.appendChild(markerSelect);
 
         // Add each marker to the marker select
-        for (let marker of markers[addon]) {
-          var markerOption = document.createElement('div');
-          markerOption.className = 'marker-select-option';
-          markerOption.innerHTML = `<span class="marker-select-name">${marker.name}</span><img src="${marker.url}" class="marker-select-image" />`;
-          markerOption.addEventListener('click', function () {
-            // Set the marker image
-            var markerImage = document.getElementById('image-url');
-            markerImage.value = marker.url;
-            // Set the marker description
-            var markerDescription = document.getElementById('description');
-            markerDescription.value = marker.description;
-          });
-          markerSelect.appendChild(markerOption);
+        // get all markers where addon matches
+        for (let marker of markers.all) {
+          if (marker.addon === addon) {
+            var markerOption = document.createElement('div');
+            markerOption.className = 'marker-select-option';
+            markerOption.innerHTML = `<span class="marker-select-name">${marker.name}</span><img src="${marker.url}" class="marker-select-image" />`;
+            markerOption.addEventListener('click', function () {
+              // Set the marker image
+              var markerImage = document.getElementById('image-url');
+              markerImage.value = marker.url;
+              // Set the marker description
+              var markerDescription = document.getElementById('description');
+              markerDescription.value = marker.description;
+            });
+            markerSelect.appendChild(markerOption);
+          }
         }
       }
     });
@@ -232,7 +233,7 @@ function InitMap (worldMeta) {
       });
     }
 
-    promptMarkerSelection()
+    // promptMarkerSelection()
 
 
     // Update the 'pm:create' event listener
